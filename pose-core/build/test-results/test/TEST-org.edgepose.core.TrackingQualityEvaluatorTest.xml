@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="org.edgepose.core.TrackingQualityEvaluatorTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-11-11T13:23:43" hostname="Jessies-MacBook-Pro.local" time="0.009">
+  <properties/>
+  <testcase name="distinguishesMissingPartialAndLowConfidencePose" classname="org.edgepose.core.TrackingQualityEvaluatorTest" time="0.009"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

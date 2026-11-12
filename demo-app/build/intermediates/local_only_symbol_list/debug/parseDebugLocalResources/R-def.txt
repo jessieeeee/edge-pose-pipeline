@@ -1,0 +1,26 @@
+R_DEF: Internal format may change without notice
+local
+string app_name
+string camera_metrics_unavailable
+string camera_model_missing
+string camera_permission
+string camera_subtitle
+string camera_title
+string camera_unavailable
+string demo_subtitle
+string latency_value
+string live_error
+string live_keypoints
+string live_loading
+string live_not_ready
+string live_pose_metrics
+string live_running
+string open_camera
+string phase_value
+string replay_metrics
+string replay_mode
+string reps_value
+string request_camera
+string step_replay
+string tracking_value
+style AppTheme

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="org.edgepose.android.YuvFramePreprocessorTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-11-11T23:55:14" hostname="Jessies-MacBook-Pro.local" time="0.003">
+  <properties/>
+  <testcase name="neutralChromaProducesGrayscaleRgb" classname="org.edgepose.android.YuvFramePreprocessorTest" time="0.003"/>
+  <testcase name="clockwiseRotationMapsOutputTopLeftToSourceBottomLeft" classname="org.edgepose.android.YuvFramePreprocessorTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

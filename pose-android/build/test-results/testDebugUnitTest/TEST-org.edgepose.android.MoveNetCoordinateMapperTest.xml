@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="org.edgepose.android.MoveNetCoordinateMapperTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-11-11T23:55:14" hostname="Jessies-MacBook-Pro.local" time="0.013">
+  <properties/>
+  <testcase name="rotatesAndMirrorsInViewerSpace" classname="org.edgepose.android.MoveNetCoordinateMapperTest" time="0.012"/>
+  <testcase name="mapsPortraitCenterCrop" classname="org.edgepose.android.MoveNetCoordinateMapperTest" time="0.0"/>
+  <testcase name="rejectsInvalidRotation" classname="org.edgepose.android.MoveNetCoordinateMapperTest" time="0.0"/>
+  <testcase name="restoresPortraitSourceCropBeforePreviewCropAndMirror" classname="org.edgepose.android.MoveNetCoordinateMapperTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
