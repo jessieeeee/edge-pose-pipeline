@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="org.edgepose.mediapipe.MediaPipeLandmarkMapperTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-11T13:36:24" hostname="Jessies-MacBook-Pro.local" time="0.004">
-  <properties/>
-  <testcase name="rejectsIncompleteLandmarkSet" classname="org.edgepose.mediapipe.MediaPipeLandmarkMapperTest" time="0.002"/>
-  <testcase name="mapsNormalizedCoordinatesAndVisibilityToCoreLandmarks" classname="org.edgepose.mediapipe.MediaPipeLandmarkMapperTest" time="0.002"/>
-  <testcase name="omitsLandmarksWithNegativeVisibilityAndClampsConfidence" classname="org.edgepose.mediapipe.MediaPipeLandmarkMapperTest" time="0.0"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>
