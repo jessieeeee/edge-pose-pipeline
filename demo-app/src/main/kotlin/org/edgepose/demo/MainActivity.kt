@@ -26,7 +26,7 @@ import org.edgepose.android.MoveNetLiteRtEstimator
 import org.edgepose.android.MoveNetCoordinateMapper
 import org.edgepose.android.YuvFramePreprocessor
 import org.edgepose.core.PoseFrame
-import org.edgepose.core.SquatPhaseEngine
+import org.edgepose.core.SquatAttemptCounter
 import org.edgepose.core.SquatObservation
 import org.edgepose.core.TrackingQualityEvaluator
 import org.edgepose.core.TrackingState
@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
     private var cameraProvider: ProcessCameraProvider? = null
     private var estimator: MoveNetLiteRtEstimator? = null
     private var frameId = 0L
-    private var squatEngine = SquatPhaseEngine(standingHipY = 0.5f)
+    private var squatEngine = SquatAttemptCounter()
     private val trackingEvaluator = TrackingQualityEvaluator()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -154,7 +154,7 @@ class MainActivity : ComponentActivity() {
             cameraProvider?.unbindAll()
             estimator?.close()
             estimator = null
-            squatEngine = SquatPhaseEngine(standingHipY = 0.5f)
+            squatEngine = SquatAttemptCounter()
             previewView.visibility = View.INVISIBLE
             cameraButton.visibility = View.GONE
             cameraStatus.visibility = View.GONE
@@ -276,24 +276,27 @@ class MainActivity : ComponentActivity() {
             return SquatObservation(frame.timestampNanos, 180f, 0.5f, tracking)
         }
         val points = frame.landmarks
-        fun point(type: KeypointType) = points[type]?.takeIf { it.confidence >= 0.45f }?.point
+        fun point(type: KeypointType, minimumConfidence: Float = 0.30f) =
+            points[type]?.takeIf { it.confidence >= minimumConfidence }?.point
         val sides = listOf(
             Triple(KeypointType.LEFT_HIP, KeypointType.LEFT_KNEE, KeypointType.LEFT_ANKLE),
             Triple(KeypointType.RIGHT_HIP, KeypointType.RIGHT_KNEE, KeypointType.RIGHT_ANKLE),
         ).mapNotNull { (hipType, kneeType, ankleType) ->
-            val hip = point(hipType) ?: return@mapNotNull null
-            val knee = point(kneeType) ?: return@mapNotNull null
-            val ankle = point(ankleType) ?: return@mapNotNull null
-            Geometry.angleDegrees(hip, knee, ankle)?.let { angle -> hip.y to angle }
+            val hip = point(hipType, 0.30f) ?: return@mapNotNull null
+            val knee = point(kneeType, 0.30f) ?: return@mapNotNull null
+            val ankle = point(ankleType, 0.30f) ?: return@mapNotNull null
+            Geometry.angleDegrees(hip, knee, ankle)?.let { angle -> Triple(hip.y, ankle.y, angle) }
         }
         if (sides.isEmpty()) return null
         val hipY = sides.map { it.first }.average().toFloat()
-        val kneeAngle = sides.map { it.second }.average().toFloat()
+        val ankleY = sides.map { it.second }.average().toFloat()
+        val kneeAngle = sides.map { it.third }.average().toFloat()
         return SquatObservation(
             timestampNanos = frame.timestampNanos,
             kneeAngleDegrees = kneeAngle,
             hipY = hipY,
             trackingState = tracking,
+            ankleY = ankleY,
         )
     }
 

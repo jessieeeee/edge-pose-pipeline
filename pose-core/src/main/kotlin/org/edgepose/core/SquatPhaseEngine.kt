@@ -35,6 +35,7 @@ data class SquatObservation(
     val kneeAngleDegrees: Float,
     val hipY: Float,
     val trackingState: TrackingState,
+    val ankleY: Float? = null,
 )
 
 data class AnalysisResult(
