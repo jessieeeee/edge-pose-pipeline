@@ -30,8 +30,6 @@ import org.edgepose.core.SquatAttemptCounter
 import org.edgepose.core.SquatObservation
 import org.edgepose.core.TrackingQualityEvaluator
 import org.edgepose.core.TrackingState
-import org.edgepose.core.Geometry
-import org.edgepose.core.KeypointType
 
 class MainActivity : ComponentActivity() {
     private lateinit var previewView: PreviewView
@@ -241,7 +239,7 @@ class MainActivity : ComponentActivity() {
                         val tracking = trackingEvaluator.evaluate(judgmentFrame)
                         // Missing geometry must interrupt transition confirmation, not supply
                         // a synthetic standing angle as a valid observation.
-                        val observation = squatObservation(judgmentFrame, tracking)
+                        val observation = SquatObservationMapper.map(judgmentFrame, tracking)
                             ?: SquatObservation(timestampNanos, 180f, 0.5f, TrackingState.PARTIAL_BODY)
                         val analysis = squatEngine.observe(observation)
                         runOnUiThread {
@@ -254,6 +252,12 @@ class MainActivity : ComponentActivity() {
                                     analysis?.phase?.name ?: "UP",
                                     analysis?.repetitionCount ?: 0,
                                     mapped.count { it.value.confidence >= 0.45f },
+                                    when {
+                                        analysis.kneeAlignmentWarning -> getString(R.string.knee_alignment_warning)
+                                        analysis.kneeAlignmentCovered -> getString(R.string.knee_alignment_no_alert)
+                                        else -> getString(R.string.knee_alignment_unavailable)
+                                    },
+                                    analysis.kneeAlignmentAlertCount,
                                 )
                             }
                         }
@@ -269,35 +273,6 @@ class MainActivity : ComponentActivity() {
                 cameraStatus.setText(R.string.camera_unavailable)
             }
         }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun squatObservation(frame: PoseFrame, tracking: TrackingState): SquatObservation? {
-        if (tracking != TrackingState.TRACKING) {
-            return SquatObservation(frame.timestampNanos, 180f, 0.5f, tracking)
-        }
-        val points = frame.landmarks
-        fun point(type: KeypointType, minimumConfidence: Float = 0.30f) =
-            points[type]?.takeIf { it.confidence >= minimumConfidence }?.point
-        val sides = listOf(
-            Triple(KeypointType.LEFT_HIP, KeypointType.LEFT_KNEE, KeypointType.LEFT_ANKLE),
-            Triple(KeypointType.RIGHT_HIP, KeypointType.RIGHT_KNEE, KeypointType.RIGHT_ANKLE),
-        ).mapNotNull { (hipType, kneeType, ankleType) ->
-            val hip = point(hipType, 0.30f) ?: return@mapNotNull null
-            val knee = point(kneeType, 0.30f) ?: return@mapNotNull null
-            val ankle = point(ankleType, 0.30f) ?: return@mapNotNull null
-            Geometry.angleDegrees(hip, knee, ankle)?.let { angle -> Triple(hip.y, ankle.y, angle) }
-        }
-        if (sides.isEmpty()) return null
-        val hipY = sides.map { it.first }.average().toFloat()
-        val ankleY = sides.map { it.second }.average().toFloat()
-        val kneeAngle = sides.map { it.third }.average().toFloat()
-        return SquatObservation(
-            timestampNanos = frame.timestampNanos,
-            kneeAngleDegrees = kneeAngle,
-            hipY = hipY,
-            trackingState = tracking,
-            ankleY = ankleY,
-        )
     }
 
     private fun updateReplayMetrics() {

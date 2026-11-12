@@ -28,6 +28,10 @@ class SquatAttemptCounter(
     private var attemptStartedAt = 0L
     private var repetitions = 0
     private var lastTimestampNanos = -1L
+    private var kneeAlertCount = 0
+    private var kneeWarning = false
+    private var leftRiskSince: Long? = null
+    private var rightRiskSince: Long? = null
 
     init {
         require(standingSamplesRequired > 0)
@@ -40,21 +44,23 @@ class SquatAttemptCounter(
         val ankleY = observation.ankleY
         if (observation.trackingState != TrackingState.TRACKING || ankleY == null || ankleY <= observation.hipY) {
             abortAttempt()
-            return AnalysisResult(SquatPhase.UP, repetitions, emptySet())
+            return result(observation)
         }
 
         val sample = StandingSample(observation.kneeAngleDegrees, ankleY - observation.hipY)
         if (state == null) {
             observeStanding(sample)
-            return AnalysisResult(SquatPhase.UP, repetitions, emptySet())
+            return result(observation)
         }
         if (state in setOf(AttemptState.CANDIDATE, AttemptState.DESCENDING) &&
             observation.timestampNanos - attemptStartedAt > maximumPreBottomDurationNanos
         ) {
             abortAttempt()
             observeStanding(sample)
-            return AnalysisResult(SquatPhase.UP, repetitions, emptySet())
+            return result(observation)
         }
+
+        observeKneeAlignment(observation)
 
         val standing = checkNotNull(baseline)
         val relativeDescent = (standing.hipToAnkleSpan - sample.hipToAnkleSpan) / standing.hipToAnkleSpan
@@ -87,12 +93,33 @@ class SquatAttemptCounter(
             AttemptState.ASCENDING -> if (sample.angle >= returnStandingAngleDegrees) state = AttemptState.RETURN_STANDING
             AttemptState.RETURN_STANDING -> if (sample.angle >= settledStandingAngleDegrees) {
                 repetitions += 1
+                if (kneeWarning) kneeAlertCount += 1
                 abortAttempt()
                 observeStanding(sample)
             }
         }
-        return AnalysisResult(phase(), repetitions, emptySet())
+        return result(observation)
     }
+
+    private fun observeKneeAlignment(observation: SquatObservation) {
+        val evidence = observation.kneeAlignment
+        if (evidence?.covered != true) {
+            leftRiskSince = null
+            rightRiskSince = null
+            return
+        }
+        val now = observation.timestampNanos
+        leftRiskSince = if (evidence.left?.detected == true) leftRiskSince ?: now else null
+        rightRiskSince = if (evidence.right?.detected == true) rightRiskSince ?: now else null
+        if (listOfNotNull(leftRiskSince, rightRiskSince).any { now - it >= 80_000_000L }) kneeWarning = true
+    }
+
+    private fun result(observation: SquatObservation) = AnalysisResult(
+        phase(), repetitions, emptySet(),
+        kneeAlignmentWarning = kneeWarning && observation.kneeAlignment?.covered == true && state != null,
+        kneeAlignmentAlertCount = kneeAlertCount,
+        kneeAlignmentCovered = observation.kneeAlignment?.covered == true && observation.trackingState == TrackingState.TRACKING,
+    )
 
     private fun observeStanding(sample: StandingSample) {
         if (standingSamples.size < standingSamplesRequired) {
@@ -132,5 +159,8 @@ class SquatAttemptCounter(
         baseline = null
         lowestAngle = 180f
         standingSamples.clear()
+        kneeWarning = false
+        leftRiskSince = null
+        rightRiskSince = null
     }
 }

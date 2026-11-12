@@ -36,12 +36,16 @@ data class SquatObservation(
     val hipY: Float,
     val trackingState: TrackingState,
     val ankleY: Float? = null,
+    val kneeAlignment: KneeAlignmentEvidence? = null,
 )
 
 data class AnalysisResult(
     val phase: SquatPhase,
     val repetitionCount: Int,
     val findings: Set<FindingCode>,
+    val kneeAlignmentWarning: Boolean = false,
+    val kneeAlignmentAlertCount: Int = 0,
+    val kneeAlignmentCovered: Boolean = false,
 )
 
 class SquatPhaseEngine(

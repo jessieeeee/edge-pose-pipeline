@@ -16,7 +16,10 @@
     <string name="live_running">Live MoveNet inference active</string>
     <string name="live_error">Pose inference failed; check model input contract</string>
     <string name="live_keypoints">Confident keypoints  %1$d / 13</string>
-    <string name="live_pose_metrics">Tracking  %1$s\nSquat  %2$s\nReps  %3$d\nKeypoints  %4$d / 13</string>
+    <string name="live_pose_metrics">Tracking  %1$s\nSquat  %2$s\nReps  %3$d\nKeypoints  %4$d / 13\n%5$s\nKnee alerts  %6$d</string>
+    <string name="knee_alignment_warning">Watch knee alignment</string>
+    <string name="knee_alignment_no_alert">No alignment alert</string>
+    <string name="knee_alignment_unavailable">Alignment unavailable</string>
     <string name="request_camera">ENABLE CAMERA</string>
     <string name="replay_mode">REPLAY MODE</string>
     <string name="open_camera">CAMERA PREVIEW</string>
