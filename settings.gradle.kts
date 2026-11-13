@@ -20,7 +20,8 @@ if (providers.gradleProperty("includeAndroid").orNull == "true") {
     include(":pose-android")
 }
 if (providers.gradleProperty("includeMediaPipe").orNull == "true" ||
-    providers.gradleProperty("includeDemoMediaPipe").orNull == "true"
+    providers.gradleProperty("includeDemoMediaPipe").orNull == "true" ||
+    providers.gradleProperty("includeDemo").orNull == "true"
 ) {
     include(":pose-mediapipe")
 }
