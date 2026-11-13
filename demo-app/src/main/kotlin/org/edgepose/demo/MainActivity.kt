@@ -30,6 +30,13 @@ import org.edgepose.core.SquatAttemptCounter
 import org.edgepose.core.SquatObservation
 import org.edgepose.core.TrackingQualityEvaluator
 import org.edgepose.core.TrackingState
+import org.edgepose.core.KneeAlignmentEvidence
+import org.edgepose.core.LatestSecondaryEvidenceScheduler
+import org.edgepose.core.SecondaryEvidenceCoordinator
+import org.edgepose.core.SquatPhase
+import org.edgepose.mediapipe.MediaPipeKneeEvidenceEvaluator
+import org.edgepose.mediapipe.MediaPipePoseEstimator
+import org.edgepose.mediapipe.MediaPipeRgbFrameEvaluator
 
 class MainActivity : ComponentActivity() {
     private lateinit var previewView: PreviewView
@@ -41,6 +48,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var replayButton: Button
     private lateinit var subtitle: TextView
     private lateinit var cameraExecutor: ExecutorService
+    private lateinit var secondaryExecutor: ExecutorService
     private val replayController = DemoReplayController()
     private var mode = DemoMode.REPLAY
     private var cameraProvider: ProcessCameraProvider? = null
@@ -48,6 +56,8 @@ class MainActivity : ComponentActivity() {
     private var frameId = 0L
     private var squatEngine = SquatAttemptCounter()
     private val trackingEvaluator = TrackingQualityEvaluator()
+    private var mediaPipeEstimator: MediaPipePoseEstimator? = null
+    private var secondaryCoordinator: SecondaryEvidenceCoordinator<ByteArray, KneeAlignmentEvidence?>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,6 +65,7 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = 0xFF0B1220.toInt()
         window.navigationBarColor = 0xFF0B1220.toInt()
         cameraExecutor = Executors.newSingleThreadExecutor()
+        secondaryExecutor = Executors.newSingleThreadExecutor()
         buildContent()
         updateReplayMetrics()
         showMode()
@@ -69,7 +80,10 @@ class MainActivity : ComponentActivity() {
         cameraProvider?.unbindAll()
         estimator?.close()
         estimator = null
+        mediaPipeEstimator?.close()
+        secondaryCoordinator?.close()
         if (::cameraExecutor.isInitialized) cameraExecutor.shutdown()
+        if (::secondaryExecutor.isInitialized) secondaryExecutor.shutdown()
         super.onDestroy()
     }
 
@@ -194,6 +208,19 @@ class MainActivity : ComponentActivity() {
             }
             MoveNetLiteRtEstimator.fromModelFile(modelFile)
         }.getOrNull()
+        mediaPipeEstimator?.close()
+        secondaryCoordinator?.close()
+        mediaPipeEstimator = runCatching { MediaPipePoseEstimator(this) }.getOrNull()
+        mediaPipeEstimator?.let { mp ->
+            lateinit var coordinator: SecondaryEvidenceCoordinator<ByteArray, KneeAlignmentEvidence?>
+            val scheduler = LatestSecondaryEvidenceScheduler<ByteArray, KneeAlignmentEvidence?>(
+                secondaryExecutor,
+                { request -> MediaPipeRgbFrameEvaluator(MediaPipeKneeEvidenceEvaluator.from(mp)).evaluate(request.payload, request.frameId, 0L) },
+                { _, result -> if (result != null) coordinator.acceptResult(result) },
+            )
+            coordinator = SecondaryEvidenceCoordinator(scheduler, { it })
+            secondaryCoordinator = coordinator
+        }
         if (estimator == null) cameraStatus.text = getString(R.string.camera_model_missing, MODEL_FILE_NAME)
         else cameraStatus.setText(R.string.live_loading)
         previewView.visibility = View.VISIBLE
@@ -239,9 +266,21 @@ class MainActivity : ComponentActivity() {
                         val tracking = trackingEvaluator.evaluate(judgmentFrame)
                         // Missing geometry must interrupt transition confirmation, not supply
                         // a synthetic standing angle as a valid observation.
-                        val observation = SquatObservationMapper.map(judgmentFrame, tracking)
+                        var observation = SquatObservationMapper.map(judgmentFrame, tracking)
                             ?: SquatObservation(timestampNanos, 180f, 0.5f, TrackingState.PARTIAL_BODY)
+                        secondaryCoordinator?.takeEvidence()?.let { evidence ->
+                            observation = observation.copy(
+                                kneeAlignment = org.edgepose.core.KneeEvidenceMerger.merge(observation.kneeAlignment, evidence),
+                            )
+                        }
                         val analysis = squatEngine.observe(observation)
+                        secondaryCoordinator?.observeAttempt(
+                            attempt = 1L,
+                            frameId = frame.frameId,
+                            timestampNanos = timestampNanos,
+                            phase = analysis?.phase ?: SquatPhase.UP,
+                            payload = rgb,
+                        )
                         runOnUiThread {
                             if (mode == DemoMode.CAMERA) {
                                 overlayView.render(frame)
