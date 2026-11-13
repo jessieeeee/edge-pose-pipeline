@@ -46,6 +46,6 @@ class MediaPipePoseEstimator(
     }
 
     companion object {
-        const val DEFAULT_MODEL_ASSET = "pose_landmarker.task"
+        const val DEFAULT_MODEL_ASSET = "pose_landmarker_full.task"
     }
 }

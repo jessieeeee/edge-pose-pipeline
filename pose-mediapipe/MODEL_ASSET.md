@@ -1,3 +1,3 @@
 # Pose Landmarker Model Asset
 
-This module does not bundle a `.task` model. To use `MediaPipePoseEstimator`, place an authorized Pose Landmarker task file in the consuming Android app's assets and pass its asset path to the estimator. Confirm the exact model artifact's license and redistribution terms independently; this repository does not grant rights to the model.
+The module bundles the authorized `pose_landmarker_full.task` model used by the demo. SHA-256: `4eaa5eb7a98365221087693fcc286334cf0858e2eb6e15b506aa4a7ecdcec4ad`. `MediaPipePoseEstimator` also accepts an alternate compatible task path. Confirm the exact model artifact's license and redistribution terms before distributing modified or replacement assets.

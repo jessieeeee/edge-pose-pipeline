@@ -200,8 +200,8 @@ class MainActivity : ComponentActivity() {
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
             runCatching {
-                val provider = providerFuture.get()
-                cameraProvider = provider
+                val cameraProviderInstance = providerFuture.get()
+                cameraProvider = cameraProviderInstance
                 val preview = Preview.Builder().build()
                 preview.setSurfaceProvider(previewView.surfaceProvider)
                 val analysis = ImageAnalysis.Builder()
@@ -267,8 +267,8 @@ class MainActivity : ComponentActivity() {
                         image.close()
                     }
                 }
-                provider.unbindAll()
-                provider.bindToLifecycle(this, CameraSelector.DEFAULT_FRONT_CAMERA, preview, analysis)
+                cameraProviderInstance.unbindAll()
+                cameraProviderInstance.bindToLifecycle(this, CameraSelector.DEFAULT_FRONT_CAMERA, preview, analysis)
             }.onFailure {
                 cameraStatus.setText(R.string.camera_unavailable)
             }
