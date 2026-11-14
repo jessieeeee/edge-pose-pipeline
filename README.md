@@ -2,7 +2,7 @@
 
 An on-device Android squat analysis demo built around a model-agnostic Kotlin core. It combines MoveNet for the primary real-time pose stream with MediaPipe Pose Landmarker for sampled secondary knee-alignment evidence.
 
-The repository is interview-oriented: deterministic judgment logic is isolated in a JVM-testable core, Android camera and inference code lives in adapters, and the demo renders core results without duplicating exercise logic.
+Deterministic judgment logic is isolated in a JVM-testable core, Android camera and inference code lives in adapters, and the demo renders core results without duplicating exercise logic.
 
 ## What It Demonstrates
 
