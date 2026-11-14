@@ -34,6 +34,7 @@ import org.edgepose.core.KneeAlignmentEvidence
 import org.edgepose.core.LatestSecondaryEvidenceScheduler
 import org.edgepose.core.SecondaryEvidenceCoordinator
 import org.edgepose.core.SquatPhase
+import org.edgepose.core.SecondaryEvidenceDiagnostic
 import org.edgepose.mediapipe.MediaPipeKneeEvidenceEvaluator
 import org.edgepose.mediapipe.MediaPipePoseEstimator
 import org.edgepose.mediapipe.MediaPipeRgbFrameEvaluator
@@ -56,8 +57,11 @@ class MainActivity : ComponentActivity() {
     private var frameId = 0L
     private var squatEngine = SquatAttemptCounter()
     private val trackingEvaluator = TrackingQualityEvaluator()
+    private var secondaryAttemptId = 0L
+    private var previousSquatPhase = SquatPhase.UP
     private var mediaPipeEstimator: MediaPipePoseEstimator? = null
     private var secondaryCoordinator: SecondaryEvidenceCoordinator<ByteArray, KneeAlignmentEvidence?>? = null
+    private var traceRecorder: PoseTraceRecorder? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,6 +70,7 @@ class MainActivity : ComponentActivity() {
         window.navigationBarColor = 0xFF0B1220.toInt()
         cameraExecutor = Executors.newSingleThreadExecutor()
         secondaryExecutor = Executors.newSingleThreadExecutor()
+        traceRecorder = PoseTraceRecorder(this)
         buildContent()
         updateReplayMetrics()
         showMode()
@@ -82,6 +87,7 @@ class MainActivity : ComponentActivity() {
         estimator = null
         mediaPipeEstimator?.close()
         secondaryCoordinator?.close()
+        traceRecorder?.close()
         if (::cameraExecutor.isInitialized) cameraExecutor.shutdown()
         if (::secondaryExecutor.isInitialized) secondaryExecutor.shutdown()
         super.onDestroy()
@@ -210,16 +216,75 @@ class MainActivity : ComponentActivity() {
         }.getOrNull()
         mediaPipeEstimator?.close()
         secondaryCoordinator?.close()
-        mediaPipeEstimator = runCatching { MediaPipePoseEstimator(this) }.getOrNull()
+        traceRecorder?.record(frameId, System.nanoTime().coerceAtLeast(0L), "camera_session", mapOf("state" to "starting"))
+        val mediaPipeInit = runCatching { MediaPipePoseEstimator(this) }
+        mediaPipeEstimator = mediaPipeInit.getOrNull()
+        traceRecorder?.record(
+            frameId,
+            System.nanoTime().coerceAtLeast(0L),
+            "model_init",
+            mapOf("model" to "mediapipe", "initialized" to (mediaPipeEstimator != null)),
+        )
         mediaPipeEstimator?.let { mp ->
             lateinit var coordinator: SecondaryEvidenceCoordinator<ByteArray, KneeAlignmentEvidence?>
             val scheduler = LatestSecondaryEvidenceScheduler<ByteArray, KneeAlignmentEvidence?>(
                 secondaryExecutor,
-                { request -> MediaPipeRgbFrameEvaluator(MediaPipeKneeEvidenceEvaluator.from(mp)).evaluate(request.payload, request.frameId, 0L) },
-                { _, result -> if (result != null) coordinator.acceptResult(result) },
+                { request ->
+                    val started = System.nanoTime()
+                    try {
+                        MediaPipeRgbFrameEvaluator(MediaPipeKneeEvidenceEvaluator.from(mp))
+                            .evaluate(request.payload, request.frameId, 0L)
+                            .also { result ->
+                                traceRecorder?.record(
+                                    request.frameId,
+                                    System.nanoTime().coerceAtLeast(0L),
+                                    "mediapipe_result",
+                                    mapOf(
+                                        "attemptId" to request.attemptId,
+                                        "hasPose" to (result != null),
+                                        "evidence" to evidenceFields(result),
+                                        "durationNanos" to (System.nanoTime() - started).coerceAtLeast(0L),
+                                    ),
+                                )
+                            }
+                    } catch (error: Throwable) {
+                        traceRecorder?.record(
+                            request.frameId,
+                            System.nanoTime().coerceAtLeast(0L),
+                            "mediapipe_failure",
+                            mapOf("attemptId" to request.attemptId, "errorType" to error.javaClass.name, "message" to error.message),
+                        )
+                        null
+                    }
+                },
+                { request, result ->
+                    if (result != null) coordinator.acceptResult(result)
+                    traceRecorder?.record(
+                        request.frameId,
+                        System.nanoTime().coerceAtLeast(0L),
+                        "mediapipe_completed",
+                        mapOf("attemptId" to request.attemptId, "evidence" to evidenceFields(result)),
+                    )
+                },
+                { request, error ->
+                    traceRecorder?.record(
+                        request.frameId,
+                        System.nanoTime().coerceAtLeast(0L),
+                        "mediapipe_failure",
+                        mapOf("attemptId" to request.attemptId, "errorType" to error.javaClass.name, "message" to error.message),
+                    )
+                },
             )
-            coordinator = SecondaryEvidenceCoordinator(scheduler, { it })
+            coordinator = SecondaryEvidenceCoordinator(scheduler, { it }, onDiagnostic = ::recordSecondaryDiagnostic)
             secondaryCoordinator = coordinator
+        }
+        mediaPipeInit.exceptionOrNull()?.let { error ->
+            traceRecorder?.record(
+                frameId,
+                System.nanoTime().coerceAtLeast(0L),
+                "model_init_failure",
+                mapOf("model" to "mediapipe", "errorType" to error.javaClass.name, "message" to error.message),
+            )
         }
         if (estimator == null) cameraStatus.text = getString(R.string.camera_model_missing, MODEL_FILE_NAME)
         else cameraStatus.setText(R.string.live_loading)
@@ -268,18 +333,47 @@ class MainActivity : ComponentActivity() {
                         // a synthetic standing angle as a valid observation.
                         var observation = SquatObservationMapper.map(judgmentFrame, tracking)
                             ?: SquatObservation(timestampNanos, 180f, 0.5f, TrackingState.PARTIAL_BODY)
+                        val primaryEvidence = observation.kneeAlignment
                         secondaryCoordinator?.takeEvidence()?.let { evidence ->
                             observation = observation.copy(
                                 kneeAlignment = org.edgepose.core.KneeEvidenceMerger.merge(observation.kneeAlignment, evidence),
                             )
                         }
                         val analysis = squatEngine.observe(observation)
+                        val currentPhase = analysis?.phase ?: SquatPhase.UP
+                        if (previousSquatPhase == SquatPhase.UP && currentPhase != SquatPhase.UP) {
+                            secondaryAttemptId++
+                        }
+                        previousSquatPhase = currentPhase
                         secondaryCoordinator?.observeAttempt(
-                            attempt = 1L,
+                            attempt = secondaryAttemptId,
                             frameId = frame.frameId,
                             timestampNanos = timestampNanos,
-                            phase = analysis?.phase ?: SquatPhase.UP,
+                            phase = currentPhase,
                             payload = rgb,
+                        )
+                        traceRecorder?.record(
+                            frame.frameId,
+                            timestampNanos,
+                            "frame",
+                            mapOf(
+                                "tracking" to tracking.name,
+                                "phase" to currentPhase.name,
+                                "repetitions" to (analysis?.repetitionCount ?: 0),
+                                "keypoints" to judgmentFrame.landmarks.values.map { landmark ->
+                                    mapOf(
+                                        "type" to landmark.type.name,
+                                        "x" to landmark.point.x,
+                                        "y" to landmark.point.y,
+                                        "confidence" to landmark.confidence,
+                                    )
+                                },
+                                "moveNetEvidence" to evidenceFields(primaryEvidence),
+                                "mergedEvidence" to evidenceFields(observation.kneeAlignment),
+                                "kneeWarning" to (analysis?.kneeAlignmentWarning ?: false),
+                                "kneeAlignmentCovered" to (analysis?.kneeAlignmentCovered ?: false),
+                                "kneeAlertCount" to (analysis?.kneeAlignmentAlertCount ?: 0),
+                            ),
                         )
                         runOnUiThread {
                             if (mode == DemoMode.CAMERA) {
@@ -300,7 +394,13 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
-                    } catch (_: Throwable) {
+                    } catch (error: Throwable) {
+                        traceRecorder?.record(
+                            frameId,
+                            System.nanoTime().coerceAtLeast(0L),
+                            "analyzer_failure",
+                            mapOf("errorType" to error.javaClass.name, "message" to error.message),
+                        )
                         runOnUiThread { if (mode == DemoMode.CAMERA) cameraStatus.setText(R.string.live_error) }
                     } finally {
                         image.close()
@@ -308,7 +408,14 @@ class MainActivity : ComponentActivity() {
                 }
                 cameraProviderInstance.unbindAll()
                 cameraProviderInstance.bindToLifecycle(this, CameraSelector.DEFAULT_FRONT_CAMERA, preview, analysis)
+                traceRecorder?.record(frameId, System.nanoTime().coerceAtLeast(0L), "camera_session", mapOf("state" to "bound"))
             }.onFailure {
+                traceRecorder?.record(
+                    frameId,
+                    System.nanoTime().coerceAtLeast(0L),
+                    "camera_failure",
+                    mapOf("errorType" to it.javaClass.name, "message" to it.message),
+                )
                 cameraStatus.setText(R.string.camera_unavailable)
             }
         }, ContextCompat.getMainExecutor(this))
@@ -324,6 +431,29 @@ class MainActivity : ComponentActivity() {
             state.repetitions,
             state.tracking,
             state.latencyMs,
+        )
+    }
+
+    private fun recordSecondaryDiagnostic(diagnostic: SecondaryEvidenceDiagnostic) {
+        traceRecorder?.record(
+            diagnostic.frameId,
+            diagnostic.timestampNanos,
+            "mediapipe_schedule",
+            mapOf(
+                "attemptId" to diagnostic.attemptId,
+                "phase" to diagnostic.phase.name,
+                "reason" to diagnostic.reason.name,
+                "sampleCount" to diagnostic.sampleCount,
+            ),
+        )
+    }
+
+    private fun evidenceFields(evidence: KneeAlignmentEvidence?): Map<String, Any?>? = evidence?.let {
+        mapOf(
+            "covered" to it.covered,
+            "detected" to it.detected,
+            "left" to it.left?.let { side -> mapOf("detected" to side.detected, "strongDetected" to side.strongDetected) },
+            "right" to it.right?.let { side -> mapOf("detected" to side.detected, "strongDetected" to side.strongDetected) },
         )
     }
 

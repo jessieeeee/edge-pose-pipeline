@@ -36,5 +36,23 @@ To package the MediaPipe adapter and task model with the demo APK:
 ./gradlew -PincludeAndroid=true -PincludeDemo=true -PincludeDemoMediaPipe=true :demo-app:assembleDebug
 ```
 
+## Local Diagnostic Trace
+
+Camera mode writes versioned JSONL diagnostics to the app-private
+`files/pose-diagnostic-traces/` directory. Events correlate frames, normalized
+MoveNet landmarks and confidence, tracking/phase/repetition state, primary and
+merged knee evidence, MediaPipe sampling decisions, inference outcomes, and
+failures. Camera images, RGB buffers, and bitmaps are never written. Each trace
+is capped at 5 MiB and the directory retains at most five recent sessions.
+
+Export the newest trace from a connected debug device with:
+
+```bash
+adb shell run-as org.edgepose.demo sh -c 'ls -t files/pose-diagnostic-traces/*.jsonl | head -1 | xargs cat' > pose-trace.jsonl
+```
+
+Treat exported traces as diagnostic data: they contain pose coordinates and
+should not be published with the demo unless explicitly reviewed and anonymized.
+
 
 The core is designed to consume normalized pose observations and produce deterministic analysis results. It does not include accounts, network services, or VexaFit product configuration.
